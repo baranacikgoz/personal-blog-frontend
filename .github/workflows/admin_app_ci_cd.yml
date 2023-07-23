@@ -1,0 +1,63 @@
+name: Build and deploy Admin app for web
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Install Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+        cache: true
+    - run: cd admin_app && flutter pub get
+    - run: cd admin_app && flutter test
+    - run: cd admin_app && flutter build web
+
+    - name: Archive production artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: admin_app_build
+        path: admin_app/build/web/*
+        
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v2
+      with:
+        name: admin_app_build
+
+    - name: Clear /var/www/admin directory
+      run: |
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key.pem
+        chmod 600 private_key.pem
+        ssh -i private_key.pem -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOSTNAME }} 'sudo rm -rf /var/www/admin/*'
+        rm private_key.pem
+
+    - name: Deploy to server
+      uses: appleboy/scp-action@master
+      with:
+        host: ${{ secrets.SSH_HOSTNAME }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        source: "./*"
+        target: /var/www/admin/
+        rm: false
+
+    - name: Reload Nginx
+      run: |
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key.pem
+        chmod 600 private_key.pem
+        ssh -i private_key.pem -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOSTNAME }} 'sudo nginx -s reload'
+        rm private_key.pem

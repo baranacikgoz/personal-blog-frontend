@@ -1,9 +1,10 @@
-name: Build and deploy for web
+name: Build and deploy Main app for web
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   build:
@@ -17,15 +18,15 @@ jobs:
       with:
         channel: 'stable'
         cache: true
-    - run: flutter pub get
-    - run: flutter test
-    - run: flutter build web
+    - run: cd main_app && flutter pub get
+    - run: cd main_app && flutter test
+    - run: cd main_app && flutter build web
 
     - name: Archive production artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: build
-        path: ./build/web/*
+        name: main_app_build
+        path: main_app/build/web/*
         
   deploy:
     needs: build
@@ -35,7 +36,7 @@ jobs:
     - name: Download build artifacts
       uses: actions/download-artifact@v2
       with:
-        name: build
+        name: main_app_build
 
     - name: Clear /var/www/html directory
       run: |
