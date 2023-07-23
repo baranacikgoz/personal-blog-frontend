@@ -1,0 +1,62 @@
+name: Build and deploy for web
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Install Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+        cache: true
+    - run: flutter pub get
+    - run: flutter test
+    - run: flutter build web
+
+    - name: Archive production artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: build
+        path: ./build/web/*
+        
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v2
+      with:
+        name: build
+
+    - name: Clear /var/www/html directory
+      run: |
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key.pem
+        chmod 600 private_key.pem
+        ssh -i private_key.pem -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOSTNAME }} 'sudo rm -rf /var/www/html/*'
+        rm private_key.pem
+
+    - name: Deploy to server
+      uses: appleboy/scp-action@master
+      with:
+        host: ${{ secrets.SSH_HOSTNAME }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        source: "./*"
+        target: /var/www/html/
+        rm: false
+
+    - name: Reload Nginx
+      run: |
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key.pem
+        chmod 600 private_key.pem
+        ssh -i private_key.pem -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOSTNAME }} 'sudo nginx -s reload'
+        rm private_key.pem
